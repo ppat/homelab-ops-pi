@@ -6,7 +6,7 @@
 services:
   theengsgateway:
     container_name: theengsgateway
-    image: theengs/gateway:v1.7.5.1
+    image: theengs/gateway:v1.7.5.1@sha256:568deb8ff96155aad7d8f0b376094aa2be9dac92200d33ea5f13bcdf835ea538
     restart: unless-stopped
     # Non-secret runtime config stays inline; only credentials come from bws via
     # the generated env file (MQTT_USERNAME / MQTT_PASSWORD / MQTT_HOST).

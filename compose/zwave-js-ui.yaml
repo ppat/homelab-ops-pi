@@ -5,7 +5,7 @@
 services:
   zwave-js-ui:
     container_name: zwave-js-ui
-    image: ghcr.io/zwave-js/zwave-js-ui:10.9.0
+    image: ghcr.io/zwave-js/zwave-js-ui:10.9.0@sha256:6db7cdfde1a037b5263e4434d0890619710772464ef72477d1be6c3c3c6b5419
     restart: unless-stopped
     stop_signal: SIGINT
     tty: true
