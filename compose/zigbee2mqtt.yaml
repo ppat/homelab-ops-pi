@@ -5,7 +5,7 @@
 services:
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: ghcr.io/koenkk/zigbee2mqtt:2.5.1
+    image: ghcr.io/koenkk/zigbee2mqtt:2.5.1@sha256:1e639d3144960f246dcecc21d993169fd6844b5817e939bca498b2abf2c23159
     restart: unless-stopped
     ports:
     - 8080:8080
