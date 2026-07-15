@@ -1,0 +1,13 @@
+# Generated env files must NEVER be committed. They live on the host at
+# /etc/homelab-pi/ and are produced by bin/apply from bws. This pattern is a
+# belt-and-suspenders guard in case anyone renders them inside the repo.
+*.env
+!*.env.example
+
+# mise local state
+.mise.local.toml
+mise.lock            # remove this line if you choose to commit the lockfile
+
+# editor / OS noise
+.DS_Store
+*.swp

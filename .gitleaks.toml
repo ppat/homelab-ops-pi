@@ -1,0 +1,17 @@
+# gitleaks configuration. Extends the default ruleset and allowlists the
+# repo's intentional non-secrets: placeholder UUIDs in *.secrets.map and any
+# *.example files. Real secrets never live in the repo (they come from bws at
+# apply time), so gitleaks here is a guard against accidental commits.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "repo-intentional non-secrets"
+paths = [
+  '''.*\.secrets\.map$''',
+  '''.*\.example$''',
+]
+# the all-zero placeholder UUID used in secrets maps
+regexes = [
+  '''00000000-0000-0000-0000-000000000000''',
+]
