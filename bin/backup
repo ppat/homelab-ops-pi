@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Backup driver. Resolves restic/S3 config from bws (fail-closed, same contract
+# as bin/apply), then delegates to resticprofile, which owns per-app repos,
+# retention, and per-service quiesce hooks (see backup/profiles.yaml).
+#
+# Runs daily via systemd timer, offset from apply. Safe to run by hand.
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+
+cd "${HL_REPO_ROOT}"
+
+if ! command -v resticprofile >/dev/null 2>&1; then
+  hl_err "resticprofile not found on PATH (is mise activated?)"; exit 1
+fi
+
+# --- resolve restic/S3 secrets from bws ------------------------------------
+# Written to /etc/homelab-pi/restic.env; fail-closed preserves last-good so a
+# transient bws outage doesn't abort the backup when valid creds already exist.
+hl_require_bws || { hl_err "bws preconditions unmet; aborting"; exit 1; }
+set +e
+hl_render_map restic "${HL_REPO_ROOT}/backup/restic.secrets.map" "${HL_ENV_DIR}/restic.env"
+rc=$?
+set -e
+case "${rc}" in
+  0|2) : ;;                                       # rendered, or last-good kept
+  3) hl_err "restic creds unrenderable and no fallback"; exit 1 ;;
+  *) hl_err "unexpected render rc=${rc}"; exit 1 ;;
+esac
+
+set -a
+# shellcheck disable=SC1091
+source "${HL_ENV_DIR}/restic.env"
+set +a
+# non-secret repo root for quiesce hooks
+export HL_REPO_ROOT
+
+# --- run backups -----------------------------------------------------------
+hl_info "starting backups"
+resticprofile --config backup/profiles.yaml full-backup.backup
+hl_info "backups complete"

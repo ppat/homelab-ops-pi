@@ -1,0 +1,13 @@
+---
+# Single Compose project composed from one file per app.
+#
+# `include:` (Compose >= 2.20) merges each self-contained file into ONE project,
+# so `docker compose up -d` from the repo root brings the whole stack up, while
+# `docker compose stop zigbee2mqtt` still targets a single service.
+#
+# Adding an app = drop a file in compose/ and add one line below. No script or
+# unit changes required.
+include:
+- compose/zigbee2mqtt.yaml
+- compose/zwave-js-ui.yaml
+- compose/theengsgateway.yaml

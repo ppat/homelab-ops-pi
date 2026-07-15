@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# One-shot host bootstrap. The ONLY input it ever asks for is the bws access
+# token, and only if it isn't already present. Everything else comes from the
+# repo (non-secrets) or bws (secrets). Idempotent: safe to re-run.
+#
+#   sudo ./bin/bootstrap
+#
+# Prereq (bws-side, one-time, NOT a host step): the secrets referenced by
+# compose/env/*.secrets.map and backup/restic.secrets.map must exist in bws and
+# their UUIDs recorded in those maps. See README "bws project setup".
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+
+[[ "${EUID}" -eq 0 ]] || { hl_err "run as root (sudo)"; exit 1; }
+cd "${HL_REPO_ROOT}"
+
+# --- 1. preflight ----------------------------------------------------------
+if ! docker compose version >/dev/null 2>&1; then
+  hl_err "docker compose plugin not found"; exit 1
+fi
+hl_info "docker compose $(docker compose version --short 2>/dev/null || echo '?') (need >= 2.20)"
+
+# --- 2. bws token: the one and only prompt ---------------------------------
+install -d -m 0755 "${HL_ENV_DIR}"
+bws_env="${HL_ENV_DIR}/bws.env"
+if [[ -f "${bws_env}" ]] && grep -q '^BWS_ACCESS_TOKEN=' "${bws_env}"; then
+  hl_info "bws token already present; not prompting"
+else
+  # allow non-interactive preset via env, else prompt (hidden input)
+  token="${BWS_ACCESS_TOKEN:-}"
+  if [[ -z "${token}" ]]; then
+    printf 'Enter BWS_ACCESS_TOKEN: ' >&2
+    read -rs token; printf '\n' >&2
+  fi
+  [[ -n "${token}" ]] || { hl_err "no token provided"; exit 1; }
+  umask 077
+  printf 'BWS_ACCESS_TOKEN=%s\n' "${token}" > "${bws_env}"
+  chmod 0600 "${bws_env}"
+  unset token
+  hl_info "wrote ${bws_env} (0600)"
+fi
+
+# --- 3. toolchain ----------------------------------------------------------
+if command -v mise >/dev/null 2>&1; then
+  hl_info "installing toolchain via mise"; mise install
+else
+  hl_err "mise not found; install mise and re-run"; exit 1
+fi
+
+# --- 4. dirs + systemd units ----------------------------------------------
+install -d -m 0750 "${HL_ROLLBACK_DIR}"
+hl_info "installing systemd units"
+install -m 0644 systemd/homelab-apply.service  /etc/systemd/system/
+install -m 0644 systemd/homelab-apply.timer    /etc/systemd/system/
+install -m 0644 systemd/homelab-backup.service /etc/systemd/system/
+install -m 0644 systemd/homelab-backup.timer   /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable homelab-apply.timer homelab-backup.timer
+
+# --- 5. first converge -----------------------------------------------------
+# bws provides everything else; run the real apply + backup now so the system
+# is live on exit, not merely scheduled.
+export BWS_ACCESS_TOKEN
+BWS_ACCESS_TOKEN="$(grep '^BWS_ACCESS_TOKEN=' "${bws_env}" | cut -d= -f2-)"
+
+hl_info "running first apply"
+"${SCRIPT_DIR}/apply"
+hl_info "running first backup"
+"${SCRIPT_DIR}/backup"
+
+hl_info "bootstrap complete; timers enabled (apply 03:30, backup 04:30)"
+systemctl list-timers 'homelab-*' --no-pager || true

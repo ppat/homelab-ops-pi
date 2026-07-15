@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Restore an app's data dir from restic, with a local pre-restore rollback
+# artifact for safety.
+#
+# Usage:
+#   bin/restore <app> [snapshot-id]
+#     <app>          zigbee2mqtt | zwave-js-ui   (stateless apps are refused)
+#     [snapshot-id]  restic snapshot to restore; defaults to `latest`
+#
+# Sequence (data is only ever touched while the service is stopped):
+#   1. validate app is stateful and has a backup profile
+#   2. compose stop <app>
+#   3. tarball current data dir -> /opt/backups/homelab-pi/<app>-pre-restore-<ts>.tar.zst
+#      (this protects against the restore ITSELF being wrong: wrong snapshot,
+#       partial/failed restic restore. It is NOT a substitute for restic
+#       backups; it is the "undo the restore" escape hatch.)
+#   4. resticprofile <app>.restore --target / (restores absolute paths in place)
+#   5. compose start <app>  (guaranteed even on failure, via trap)
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+
+usage() { echo "usage: $0 <app> [snapshot-id]" >&2; exit 64; }
+
+app="${1:-}"; snapshot="${2:-latest}"
+[[ -n "${app}" ]] || usage
+
+cd "${HL_REPO_ROOT}"
+
+# --- 1. validate -----------------------------------------------------------
+if ! datadir="$(hl_app_datadir "${app}")"; then
+  hl_err "unknown app: ${app}"; exit 64
+fi
+if [[ -z "${datadir}" ]]; then
+  hl_err "${app} is stateless; nothing to restore"; exit 64
+fi
+if [[ ! -d "${datadir}" ]]; then
+  hl_warn "data dir ${datadir} does not exist yet; restic will recreate it"
+fi
+if ! command -v resticprofile >/dev/null 2>&1; then
+  hl_err "resticprofile not found on PATH (is mise activated?)"; exit 1
+fi
+
+# restic/S3 creds come from bws, same as bin/backup. Resolve before we touch
+# anything so a creds failure aborts before we stop the service.
+hl_require_bws || { hl_err "bws preconditions unmet; aborting"; exit 1; }
+set +e
+hl_render_map restic "${HL_REPO_ROOT}/backup/restic.secrets.map" "${HL_ENV_DIR}/restic.env"
+rc=$?
+set -e
+case "${rc}" in
+  0|2) : ;;
+  *) hl_err "restic creds unavailable (rc=${rc}); aborting before quiesce"; exit 1 ;;
+esac
+set -a
+# shellcheck disable=SC1091
+source "${HL_ENV_DIR}/restic.env"
+set +a
+
+hl_info "restore ${app} from snapshot '${snapshot}' (data: ${datadir})"
+
+# --- ensure service restarts no matter how we exit -------------------------
+_started=0
+restart_service() {
+  if [[ "${_started}" -eq 0 ]]; then
+    hl_info "restarting ${app}"
+    hl_compose start "${app}" || hl_err "FAILED to restart ${app} — start it manually"
+    _started=1
+  fi
+}
+trap restart_service EXIT
+
+# --- 2. quiesce ------------------------------------------------------------
+hl_info "stopping ${app}"
+hl_compose stop "${app}"
+
+# --- 3. pre-restore rollback tarball (inside the stopped window) -----------
+if [[ -d "${datadir}" ]]; then
+  if ! command -v zstd >/dev/null 2>&1; then
+    hl_err "zstd not found; refusing to restore without a rollback artifact"
+    exit 1
+  fi
+  install -d -m 0750 "${HL_ROLLBACK_DIR}"
+  ts="$(date +%Y%m%dT%H%M%S)"
+  rollback="${HL_ROLLBACK_DIR}/${app}-pre-restore-${ts}.tar.zst"
+  hl_info "capturing rollback artifact: ${rollback}"
+  # -C parent so the archive contains the data dir by its basename, making a
+  # manual rollback a simple extract back into the parent.
+  tar -C "$(dirname "${datadir}")" -c "$(basename "${datadir}")" \
+    | zstd -q -o "${rollback}"
+  hl_info "rollback artifact written ($(du -h "${rollback}" | cut -f1))"
+else
+  hl_warn "no existing data dir; skipping rollback artifact"
+fi
+
+# --- 4. restore ------------------------------------------------------------
+# Profiles back up absolute paths (/opt/<app>/data), so restoring to target `/`
+# puts files back exactly where they came from.
+hl_info "running restic restore"
+resticprofile --config backup/profiles.yaml "${app}.restore" \
+  --snapshot "${snapshot}" --target /
+hl_info "restic restore complete"
+
+# --- 5. restart (via trap) -------------------------------------------------
+restart_service
+trap - EXIT
+hl_info "restore of ${app} finished"

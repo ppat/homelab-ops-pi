@@ -1,0 +1,12 @@
+[Unit]
+Description=homelab-pi: daily backups
+
+[Timer]
+# Offset from apply (03:30) so a backup never races a converge. Quiesce hooks
+# briefly stop each stateful service during its snapshot.
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

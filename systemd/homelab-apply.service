@@ -1,0 +1,20 @@
+[Unit]
+Description=homelab-pi: apply compose stack from git + bws
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/homelab-pi
+# BWS_ACCESS_TOKEN lives here (root-owned, 0600). The one bootstrap secret that
+# cannot come from bws itself.
+EnvironmentFile=/etc/homelab-pi/bws.env
+# mise-managed CLIs (bws, docker compose plugin resolution, jq if via mise).
+# Adjust if mise shims live elsewhere.
+Environment=PATH=/root/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/homelab-pi/bin/apply
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

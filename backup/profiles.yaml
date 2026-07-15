@@ -1,0 +1,82 @@
+---
+# resticprofile configuration.
+#
+# Model: one restic repository per data directory, all sharing a common S3
+# prefix (the Pi's root). Common creds/retention are inherited from a base
+# profile; each app profile overrides only its repo suffix, backup path, and
+# quiesce hook.
+#
+# Repos:
+#   ${RESTIC_S3_ROOT}/zigbee2mqtt
+#   ${RESTIC_S3_ROOT}/zwave-js-ui
+# (theengsgateway is stateless -> no profile.)
+#
+# Environment expected (from /etc/homelab-pi/restic.env via systemd, or shell):
+#   RESTIC_S3_ROOT       e.g. s3:https://<endpoint>/<bucket>/homelab-pi
+#   RESTIC_PASSWORD      restic repo encryption password
+#   AWS_ACCESS_KEY_ID    S3 access key
+#   AWS_SECRET_ACCESS_KEY S3 secret key
+
+version: "1"
+
+# --- shared defaults -------------------------------------------------------
+global:
+  default-command: snapshots
+  initialize: true              # create repo on first run if absent
+
+# Base profile: everything inherits creds + retention + s3 options from here.
+base:
+  password-command: 'printf %s "$RESTIC_PASSWORD"'
+  backup:
+    verbose: true
+    # exclude common noise; extend per app if needed
+    exclude-caches: true
+  retention:
+    # daily backups; keep a sensible ladder
+    keep-daily: 7
+    keep-weekly: 4
+    keep-monthly: 6
+    prune: true
+    # `forget` runs after each backup via the group below
+  # restic-level throttling to stay gentle on the Pi (uncomment if needed)
+  # backup:
+  #   limit-upload: 20000        # KiB/s
+
+# --- zigbee2mqtt -----------------------------------------------------------
+zigbee2mqtt:
+  inherit: base
+  repository: '${RESTIC_S3_ROOT}/zigbee2mqtt'
+  backup:
+    source:
+    - /opt/zigbee2mqtt/data
+    # z2m writes SQLite (database.db) continuously -> quiesce just this service
+    # for a crash-consistent snapshot, then restart it.
+    run-before: 'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose stop zigbee2mqtt'
+    run-after:  'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose start zigbee2mqtt'
+    # ensure restart even if the snapshot fails
+    run-finally: 'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose start zigbee2mqtt'
+  # Quiesce + rollback tarball are owned by bin/restore, NOT by hooks here, to
+  # avoid double stop/start. This section just exists so `<app>.restore` is a
+  # valid resticprofile command; --snapshot/--target are passed by bin/restore.
+  restore:
+    verbose: true
+
+# --- zwave-js-ui -----------------------------------------------------------
+zwave-js-ui:
+  inherit: base
+  repository: '${RESTIC_S3_ROOT}/zwave-js-ui'
+  backup:
+    source:
+    - /opt/zwave-js/data
+    run-before: 'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose stop zwave-js-ui'
+    run-after:  'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose start zwave-js-ui'
+    run-finally: 'docker --project-directory ${HL_REPO_ROOT:-/opt/homelab-pi} compose start zwave-js-ui'
+  # See note in zigbee2mqtt.restore: hooks intentionally omitted.
+  restore:
+    verbose: true
+
+# --- group: run everything -------------------------------------------------
+groups:
+  full-backup:
+  - zigbee2mqtt
+  - zwave-js-ui

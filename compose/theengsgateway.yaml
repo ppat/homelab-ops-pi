@@ -1,0 +1,26 @@
+---
+services:
+  theengsgateway:
+    container_name: theengsgateway
+    image: theengs/gateway
+    restart: unless-stopped
+    # BLE scanning requires host BlueZ over D-Bus; host networking + privileged
+    # is the documented TheengsGateway pattern for hardware BT access.
+    network_mode: host
+    privileged: true
+    # Non-secret runtime config stays inline; only credentials come from bws via
+    # the generated env file (MQTT_USERNAME / MQTT_PASSWORD / MQTT_HOST).
+    environment:
+    - PUBLISH_ALL=true
+    - PUBLISH_ADVDATA=true
+    - TIME_BETWEEN=60
+    - SCAN_TIME=60
+    - LOG_LEVEL=DEBUG
+    - HASS_DISCOVERY=true
+    - DISCOVERY=true
+    - DISCOVERY_TOPIC=homeassistant/sensor
+    - SCANNING_MODE=active
+    env_file:
+    - /etc/homelab-pi/theengsgateway.env
+    volumes:
+    - /var/run/dbus:/var/run/dbus

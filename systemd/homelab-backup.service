@@ -1,0 +1,18 @@
+[Unit]
+Description=homelab-pi: restic backups of app data dirs
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/homelab-pi
+# Only the bws token is host-provided. bin/backup resolves restic/S3 creds from
+# bws at runtime (writing /etc/homelab-pi/restic.env itself, fail-closed).
+EnvironmentFile=/etc/homelab-pi/bws.env
+Environment=PATH=/root/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/homelab-pi/bin/backup
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

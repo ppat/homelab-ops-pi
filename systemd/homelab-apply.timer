@@ -1,0 +1,12 @@
+[Unit]
+Description=homelab-pi: daily apply
+
+[Timer]
+# Daily. Renovate is the change source (PR-gated), so daily cadence is plenty;
+# run bin/apply by hand for on-demand updates.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,20 @@
+---
+services:
+  zwave-js-ui:
+    container_name: zwave-js-ui
+    image: ghcr.io/zwave-js/zwave-js-ui:10.9.0
+    restart: unless-stopped
+    stop_signal: SIGINT
+    tty: true
+    # Z-Wave controller dongle, pinned by stable by-id path.
+    devices:
+    - /dev/serial/by-id/usb-Zooz_800_Z-Wave_Stick_533D004242-if00:/dev/zwave
+    ports:
+    - 8091:8091 # web interface
+    - 3000:3000 # Z-Wave JS websocket server
+    # SESSION_SECRET (and any future secrets) are resolved from bws at apply time
+    # and written here. See compose/env/zwave-js-ui.secrets.map.
+    env_file:
+    - /etc/homelab-pi/zwave-js-ui.env
+    volumes:
+    - /opt/zwave-js/data:/usr/src/app/store
