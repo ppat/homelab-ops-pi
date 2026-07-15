@@ -1,0 +1,22 @@
+[Unit]
+Description=homelab-pi: restic backups of app data dirs
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/homelab-pi
+# Only the bws token is host-provided. bin/backup resolves restic/S3 creds from
+# bws at runtime (writing /etc/homelab-pi/restic.env itself, fail-closed).
+EnvironmentFile=/etc/homelab-pi/bws.env
+# The quiesce hooks in backup/profiles.yaml drive compose against the same
+# overlaid stack; keep in sync with bin/bootstrap's first converge.
+Environment=COMPOSE_FILE=compose.yaml:compose/hardware.yaml
+# `mise exec` sets up PATH for the mise-managed CLIs (restic, resticprofile,
+# bws, zstd, jq) from mise.toml in WorkingDirectory — no hardcoded shim path.
+ExecStart=/usr/bin/env mise exec -- bin/backup
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

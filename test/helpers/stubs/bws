@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Test stub for the `bws` CLI — the one external dependency the test suite
+# fakes (see test/README or the plan for why). Only implements the one
+# invocation bin/lib.sh's hl_bws_get makes: `bws secret get <uuid>`.
+#
+# Looks the uuid up in a test-provided map file at $HL_TEST_BWS_SECRETS
+# (lines: uuid=value, same shape as compose/env/*.secrets.map). A uuid whose
+# value is the literal string "__FAIL__" makes this stub fail, simulating a
+# bws outage / resolve failure for that one secret.
+set -Eeuo pipefail
+
+if [[ "${1:-}" != secret || "${2:-}" != get || -z "${3:-}" ]]; then
+  echo "bws stub: unsupported invocation: $*" >&2
+  exit 1
+fi
+uuid="$3"
+map="${HL_TEST_BWS_SECRETS:?HL_TEST_BWS_SECRETS not set (test setup bug)}"
+
+val=""
+if [[ -f "${map}" ]]; then
+  while IFS='=' read -r k v || [[ -n "${k}" ]]; do
+    [[ "${k}" == "${uuid}" ]] && { val="${v}"; break; }
+  done <"${map}"
+fi
+
+if [[ -z "${val}" || "${val}" == "__FAIL__" ]]; then
+  echo "bws stub: secret ${uuid} not found or marked failing" >&2
+  exit 1
+fi
+printf '{"value":"%s"}\n' "${val}"

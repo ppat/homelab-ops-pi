@@ -1,0 +1,23 @@
+[Unit]
+Description=homelab-pi: apply compose stack from git + bws
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/homelab-pi
+# BWS_ACCESS_TOKEN lives here (root-owned, 0600). The one bootstrap secret that
+# cannot come from bws itself.
+EnvironmentFile=/etc/homelab-pi/bws.env
+# Layer the Pi-only hardware overlay onto the base stack. Repo-relative, resolved
+# against WorkingDirectory. Keep in sync with bin/bootstrap's first converge.
+Environment=COMPOSE_FILE=compose.yaml:compose/hardware.yaml
+# `mise exec` sets up PATH for the mise-managed CLIs (bws, restic, resticprofile,
+# zstd, jq) from mise.toml in WorkingDirectory — no hardcoded shim path. env(1)
+# locates mise on the unit's default PATH.
+ExecStart=/usr/bin/env mise exec -- bin/apply
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

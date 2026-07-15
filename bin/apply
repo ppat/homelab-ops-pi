@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Pull-based applier (the "Flux for compose" step).
+#
+# Flow:
+#   1. git pull (fast-forward only) the repo into place.
+#   2. For each app, render /etc/homelab-pi/<app>.env from bws (fail-closed
+#      per-file: a bws outage preserves last-good and does NOT abort apply).
+#   3. docker compose pull (fetch any image tags Renovate merged).
+#   4. Always run `compose up -d --remove-orphans` to converge actual state to
+#      desired state (self-healing: recreates anything manually stopped or
+#      removed since the last run, not just after an input change). It's a
+#      fast no-op when nothing changed, so unconditional convergence costs
+#      effectively nothing. git/env change flags are tracked only to log what
+#      triggered this run, not to gate whether it runs.
+#
+# Runs daily via systemd timer; also safe to invoke by hand for on-demand
+# updates. Idempotent.
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+
+APPS=(zigbee2mqtt zwave-js-ui theengsgateway)
+
+cd "${HL_REPO_ROOT}"
+
+# --- 1. sync repo ----------------------------------------------------------
+pre_head="$(git rev-parse HEAD)"
+if git pull --ff-only --quiet; then
+  hl_info "git pull ok"
+else
+  hl_warn "git pull failed; proceeding with current checkout"
+fi
+post_head="$(git rev-parse HEAD)"
+git_changed=0
+[[ "${pre_head}" != "${post_head}" ]] && git_changed=1
+
+# --- 2. render envs from bws (fail-closed per app) -------------------------
+hl_require_bws || { hl_err "bws preconditions unmet; aborting before compose"; exit 1; }
+
+env_changed=0
+for app in "${APPS[@]}"; do
+  before="$(hl_hash "${HL_ENV_DIR}/${app}.env")"
+  set +e
+  hl_render_env "${app}"; rc=$?
+  set -e
+  case "${rc}" in
+    0) : ;;                                   # rendered
+    2) hl_warn "${app}: using last-good env" ;;   # soft fail, continue
+    3) hl_err "${app}: unrenderable and no fallback"; exit 1 ;;
+    *) hl_err "${app}: unexpected render rc=${rc}"; exit 1 ;;
+  esac
+  after="$(hl_hash "${HL_ENV_DIR}/${app}.env")"
+  [[ "${before}" != "${after}" ]] && { env_changed=1; hl_info "${app}: env changed"; }
+done
+
+# --- 3. pull images --------------------------------------------------------
+# Fetch any tags Renovate merged. `compose up -d` below recreates only the
+# services whose image actually changed, so no separate digest diff is needed.
+hl_compose pull --quiet || hl_warn "compose pull encountered errors"
+
+# --- 4. converge -----------------------------------------------------------
+# Always converge, regardless of whether an input changed, so a manually
+# stopped/removed container is recreated on the next run (self-healing).
+# git/env flags are logged only to say what triggered this run.
+hl_info "converging (git=${git_changed} env=${env_changed})"
+hl_compose up -d --remove-orphans
+hl_info "apply complete"

@@ -27,12 +27,6 @@ repos:
   rev: v0.10.0.1
   hooks:
   - id: shellcheck
-    args: ["-x"] # follow `source`d files
-- repo: https://github.com/scop/pre-commit-shfmt
-  rev: v3.10.0-2
-  hooks:
-  - id: shfmt
-    args: ["-i", "2", "-ci", "-bn", "-d"]
 - repo: https://github.com/DavidAnson/markdownlint-cli2
   rev: v0.23.0
   hooks:

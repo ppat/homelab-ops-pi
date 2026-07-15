@@ -1,0 +1,24 @@
+---
+# Service definition only — hardware-free, so this file runs identically on the
+# Pi and in CI. BLE access (host networking, privileged, host BlueZ over D-Bus)
+# lives in compose/hardware.yaml (applied via COMPOSE_FILE on the Pi only).
+# Stateless: no data volume, no backup profile.
+services:
+  theengsgateway:
+    container_name: theengsgateway
+    image: theengs/gateway:v1.7.5.1
+    restart: unless-stopped
+    # Non-secret runtime config stays inline; only credentials come from bws via
+    # the generated env file (MQTT_USERNAME / MQTT_PASSWORD / MQTT_HOST).
+    environment:
+    - PUBLISH_ALL=true
+    - PUBLISH_ADVDATA=true
+    - TIME_BETWEEN=60
+    - SCAN_TIME=60
+    - LOG_LEVEL=DEBUG
+    - HASS_DISCOVERY=true
+    - DISCOVERY=true
+    - DISCOVERY_TOPIC=homeassistant/sensor
+    - SCANNING_MODE=active
+    env_file:
+    - ${HL_ENV_DIR:-/etc/homelab-pi}/theengsgateway.env
