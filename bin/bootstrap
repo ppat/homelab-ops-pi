@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# One-shot host bootstrap. The ONLY input it ever asks for is the bws access
+# token, and only if it isn't already present. Everything else comes from the
+# repo (non-secrets) or bws (secrets). Idempotent: safe to re-run.
+#
+#   sudo ./bin/bootstrap
+#
+# Prereq (bws-side, one-time, NOT a host step): the secrets referenced by
+# compose/env/*.secrets.map and backup/restic.secrets.map must exist in bws and
+# their UUIDs recorded in those maps. See README "bws project setup".
+set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib.sh"
+
+# On a real Pi this must run as root: it writes /etc/homelab-pi and
+# /etc/systemd/system and drives systemctl. When it is, pin HOME=/root so mise
+# installs to root's home regardless of how sudo was invoked (`sudo` without
+# `-H` keeps the caller's HOME). We don't hard-fail on non-root: with the HL_*
+# paths pointed at writable dirs and systemctl available (or stubbed), bootstrap
+# runs unprivileged too — which is exactly how the test suite exercises it,
+# without sudo. A genuine unprivileged run against the real /etc simply fails
+# later at the first write, with a clear permission error.
+[[ "${EUID}" -eq 0 ]] && export HOME=/root
+cd "${HL_REPO_ROOT}"
+
+# --- 1. preflight ----------------------------------------------------------
+if ! docker compose version >/dev/null 2>&1; then
+  hl_err "docker compose plugin not found"; exit 1
+fi
+compose_version="$(docker compose version --short 2>/dev/null || echo '0.0.0')"
+hl_info "docker compose ${compose_version} (need >= 2.20)"
+# `include:` (compose.yaml) requires Compose >= 2.20; enforce it rather than
+# letting an old plugin fail unpredictably later at `compose up -d` time.
+compose_major="${compose_version%%.*}"
+compose_minor="${compose_version#*.}"; compose_minor="${compose_minor%%.*}"
+if [[ "${compose_major}" -lt 2 || ( "${compose_major}" -eq 2 && "${compose_minor}" -lt 20 ) ]]; then
+  hl_err "docker compose ${compose_version} < 2.20 (required for 'include:'); upgrade the compose plugin"
+  exit 1
+fi
+
+# --- 2. bws token: the one and only prompt ---------------------------------
+install -d -m 0755 "${HL_ENV_DIR}"
+bws_env="${HL_ENV_DIR}/bws.env"
+if [[ -f "${bws_env}" ]] && grep -q '^BWS_ACCESS_TOKEN=' "${bws_env}"; then
+  hl_info "bws token already present; not prompting"
+else
+  # allow non-interactive preset via env, else prompt (hidden input)
+  token="${BWS_ACCESS_TOKEN:-}"
+  if [[ -z "${token}" ]]; then
+    printf 'Enter BWS_ACCESS_TOKEN: ' >&2
+    read -rs token; printf '\n' >&2
+  fi
+  [[ -n "${token}" ]] || { hl_err "no token provided"; exit 1; }
+  umask 077
+  printf 'BWS_ACCESS_TOKEN=%s\n' "${token}" > "${bws_env}"
+  chmod 0600 "${bws_env}"
+  unset token
+  hl_info "wrote ${bws_env} (0600)"
+fi
+
+# --- 3. toolchain ----------------------------------------------------------
+if command -v mise >/dev/null 2>&1; then
+  # mise refuses to load a config path it hasn't seen before, even under
+  # --yes (that only auto-confirms prompts, not the trust store) -- root's
+  # mise has never trusted this repo's mise.toml on a first run.
+  mise trust --quiet "${HL_REPO_ROOT}/mise.toml"
+  hl_info "installing toolchain via mise"; mise install
+else
+  hl_err "mise not found; install mise and re-run"; exit 1
+fi
+
+# --- 4. dirs + systemd units ----------------------------------------------
+install -d -m 0750 "${HL_ROLLBACK_DIR}"
+install -d -m 0755 "${HL_SYSTEMD_DIR}"
+hl_info "installing systemd units"
+install -m 0644 systemd/homelab-apply.service  "${HL_SYSTEMD_DIR}/"
+install -m 0644 systemd/homelab-apply.timer    "${HL_SYSTEMD_DIR}/"
+install -m 0644 systemd/homelab-backup.service "${HL_SYSTEMD_DIR}/"
+install -m 0644 systemd/homelab-backup.timer   "${HL_SYSTEMD_DIR}/"
+systemctl daemon-reload
+systemctl enable homelab-apply.timer homelab-backup.timer
+
+# --- 5. first converge -----------------------------------------------------
+# bws provides everything else; run the real apply + backup now so the system
+# is live on exit, not merely scheduled.
+export BWS_ACCESS_TOKEN
+BWS_ACCESS_TOKEN="$(grep '^BWS_ACCESS_TOKEN=' "${bws_env}" | cut -d= -f2-)"
+
+# Layer the Pi-only hardware overlay, matching the systemd units. Repo-relative,
+# resolved against HL_REPO_ROOT (we're cd'd there). Overridable so CI (which has
+# no dongles) can converge the base stack alone. `mise exec` provides PATH for
+# the mise-managed CLIs (bws/docker plugin resolution/restic/resticprofile/zstd/
+# jq) from mise.toml here — no shim path anywhere.
+export COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml:compose/hardware.yaml}"
+
+hl_info "running first apply"
+mise exec -- "${SCRIPT_DIR}/apply"
+hl_info "running first backup"
+mise exec -- "${SCRIPT_DIR}/backup"
+
+hl_info "bootstrap complete; timers enabled (apply 03:30, backup 04:30)"
+systemctl list-timers 'homelab-*' --no-pager || true

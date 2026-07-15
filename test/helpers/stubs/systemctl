@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Test stub for `systemctl` — bootstrap.bats must not enable/disable/reload
+# real units on a shared GitHub-hosted runner. Tracks which units are
+# "enabled" in a plain file at $HL_TEST_SYSTEMCTL_STATE (one unit name per
+# line); daemon-reload/list-timers are no-ops.
+set -Eeuo pipefail
+
+state="${HL_TEST_SYSTEMCTL_STATE:?HL_TEST_SYSTEMCTL_STATE not set (test setup bug)}"
+touch "${state}"
+
+cmd="${1:-}"
+shift || true
+
+case "${cmd}" in
+  daemon-reload | list-timers)
+    exit 0
+    ;;
+  enable)
+    for unit in "$@"; do
+      [[ "${unit}" == --* ]] && continue
+      grep -qx "${unit}" "${state}" || echo "${unit}" >>"${state}"
+    done
+    exit 0
+    ;;
+  disable)
+    for unit in "$@"; do
+      [[ "${unit}" == --* ]] && continue
+      grep -vx "${unit}" "${state}" >"${state}.tmp" || : >"${state}.tmp"
+      mv "${state}.tmp" "${state}"
+    done
+    exit 0
+    ;;
+  is-enabled)
+    unit="${1:?is-enabled requires a unit}"
+    if grep -qx "${unit}" "${state}"; then
+      echo enabled
+      exit 0
+    fi
+    echo disabled
+    exit 1
+    ;;
+  *)
+    echo "systemctl stub: unsupported invocation: ${cmd} $*" >&2
+    exit 1
+    ;;
+esac

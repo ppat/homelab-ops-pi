@@ -1,0 +1,15 @@
+# mise-managed toolchain. `mise install` on the Pi and on your workstation.
+#
+[tools]
+# --- runtime (Pi) ---
+bitwarden-secrets-manager = "2.1.0"
+restic = "0.19.1"
+jq = "1.8.2"
+"github:creativeprojects/resticprofile" = "0.33.1"
+"github:facebook/zstd" = "1.5.7"
+
+# --- test-only ---
+bats = "1.13.0"
+
+[settings]
+idiomatic_version_file_enable_tools = []

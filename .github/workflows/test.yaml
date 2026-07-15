@@ -1,0 +1,45 @@
+---
+# yamllint disable rule:line-length
+name: test
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+  - cron: '0 6 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bats:
+    # ubuntu-latest is a full VM (not a nested container), so docker, compose,
+    # git, zstd, and a real systemd are already present — see the plan/README
+    # for why this suite intentionally runs real tools rather than stubs
+    # (bws and systemctl are the only stubs). All host paths are per-test tmp
+    # dirs via the HL_* overrides, so nothing touches the real /opt or /etc.
+    # The whole suite runs unprivileged as the normal runner user (no sudo):
+    # bin/bootstrap no longer hard-requires EUID 0, and systemctl is stubbed,
+    # so bootstrap.bats runs unprivileged like everything else.
+    runs-on: ubuntu-latest
+    steps:
+    - name: Setup repository and tools
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@e1b557cd4ff79bce28b6c79b6a7de8a95db37bbb # v2.0.0
+      with:
+        current_git_ref: ${{ github.head_ref || github.ref }}
+        current_repository: ${{ github.repository }}
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: bats test/
+      working-directory: ./current
+      # --no-tempdir-cleanup: the app containers run as root and write
+      # root-owned files into the bind-mounted per-test data dirs, which the
+      # unprivileged runner can't remove — so bats' end-of-run `rm -rf` of its
+      # tempdir prints a wall of harmless "Permission denied" errors (it does
+      # not affect the exit code). This VM is ephemeral and torn down after the
+      # job, so skipping bats' own cleanup leaves nothing behind that matters.
+      run: mise exec -- bats --no-tempdir-cleanup test/

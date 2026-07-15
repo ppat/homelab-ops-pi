@@ -1,0 +1,20 @@
+---
+# Service definition only — hardware-free, so this file runs identically on the
+# Pi and in CI. The Z-Wave controller dongle passthrough lives in
+# compose/hardware.yaml (applied via COMPOSE_FILE on the Pi only).
+services:
+  zwave-js-ui:
+    container_name: zwave-js-ui
+    image: ghcr.io/zwave-js/zwave-js-ui:10.9.0
+    restart: unless-stopped
+    stop_signal: SIGINT
+    tty: true
+    ports:
+    - 8091:8091 # web interface
+    - 3000:3000 # Z-Wave JS websocket server
+    # SESSION_SECRET (and any future secrets) are resolved from bws at apply time
+    # and written here. See compose/env/zwave-js-ui.secrets.map.
+    env_file:
+    - ${HL_ENV_DIR:-/etc/homelab-pi}/zwave-js-ui.env
+    volumes:
+    - ${HL_DATA_ROOT:-/opt}/zwave-js/data:/usr/src/app/store

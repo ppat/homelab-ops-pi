@@ -1,0 +1,33 @@
+---
+# Pi-only hardware overlay. The ONE home for environment-specific hardware
+# facts: USB dongle passthrough, host BlueZ/D-Bus access, udev.
+#
+# Applied ADDITIVELY on top of the base compose/*.yaml via COMPOSE_FILE on the
+# Pi (set by bin/bootstrap; see also systemd units). NOT set in CI — the base
+# stack runs hardware-free there, so this file never needs a test counterpart.
+#
+# Compose merges these into the same-named services from the base project:
+# list fields (devices, volumes) append; scalars (network_mode, privileged)
+# set. Keep this file limited to hardware — anything portable belongs in the
+# base service file instead.
+services:
+  zigbee2mqtt:
+    # Zigbee coordinator dongle. Pinned by stable by-id path so it survives
+    # re-enumeration across reboots.
+    devices:
+    - /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_480a12b4486dee1183c6d719860a09de-if00-port0:/dev/ttyUSB0
+    volumes:
+    - /run/udev:/run/udev:ro
+
+  zwave-js-ui:
+    # Z-Wave controller dongle, pinned by stable by-id path.
+    devices:
+    - /dev/serial/by-id/usb-Zooz_800_Z-Wave_Stick_533D004242-if00:/dev/zwave
+
+  theengsgateway:
+    # BLE scanning requires host BlueZ over D-Bus; host networking + privileged
+    # is the documented TheengsGateway pattern for hardware BT access.
+    network_mode: host
+    privileged: true
+    volumes:
+    - /var/run/dbus:/var/run/dbus
