@@ -9,7 +9,7 @@ on:
     - '.github/workflows/test.yaml'
     - 'backup/*'
     - 'bin/*'
-    - 'compose/*'
+    - 'compose/**'
     - 'systemd/*'
     - 'test/**'
     - 'compose.yaml'
