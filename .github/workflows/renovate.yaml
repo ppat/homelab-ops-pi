@@ -28,4 +28,3 @@ jobs:
       app_private_key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
       dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
       dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
-

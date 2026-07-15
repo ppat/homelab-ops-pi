@@ -45,4 +45,3 @@ module.exports = {
     'body-case': [0, 'always']
   }
 }
-
