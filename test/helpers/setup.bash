@@ -63,7 +63,7 @@ hl_test_make_datadirs() {
 }
 
 # hl_test_stub_app_envs
-#   Touches empty env files for every app's env_file: entry, including
+#   Touches env files for every app's env_file: entry, including
 #   theengsgateway even though backup.bats/restore.bats only ever start/stop
 #   zigbee2mqtt/zwave-js-ui -- compose resolves ALL services' env_file:
 #   references from the `include:`d project up front, for any subcommand
@@ -72,11 +72,16 @@ hl_test_make_datadirs() {
 #   Normally bin/apply renders all of these from bws before compose ever
 #   reads them; tests that bring containers up directly bypass bin/apply
 #   entirely, so without this `docker compose` fails with "env file ... not
-#   found". Content is irrelevant here — these tests exercise quiesce/restore,
-#   not app config.
+#   found". Content is otherwise irrelevant EXCEPT zwave-js-ui: since
+#   zwave-js-ui>=11.20.0, an unset SESSION_SECRET makes the app generate one
+#   and persist it to <store>/.session-secret (mode 0600), which the
+#   unprivileged CI user can't restic-backup back out of the root-owned
+#   container. Setting SESSION_SECRET here (as bin/apply's rendered env
+#   always does in production, from compose/env/zwave-js-ui.secrets.map)
+#   keeps the app off that code path.
 hl_test_stub_app_envs() {
   : >"${HL_ENV_DIR}/zigbee2mqtt.env"
-  : >"${HL_ENV_DIR}/zwave-js-ui.env"
+  echo "SESSION_SECRET=test-session-secret-value" >"${HL_ENV_DIR}/zwave-js-ui.env"
   : >"${HL_ENV_DIR}/theengsgateway.env"
 }
 
