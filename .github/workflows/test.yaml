@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Setup repository and tools
-      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@e1b557cd4ff79bce28b6c79b6a7de8a95db37bbb # v2.0.0
+      uses: ppat/homelab-ops-actions/actions/setup-repository-tools@f1ae73db4ab080b7e8dc66d078e5905d5ca526cb # v2.1.0
       with:
         current_git_ref: ${{ github.head_ref || github.ref }}
         current_repository: ${{ github.repository }}
