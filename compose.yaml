@@ -17,4 +17,4 @@
 include:
 - compose/zigbee2mqtt.yaml
 - compose/zwave-js-ui.yaml
-- compose/theengsgateway.yaml
+# - compose/theengsgateway.yaml

@@ -63,12 +63,14 @@ hl_test_make_datadirs() {
 }
 
 # hl_test_stub_app_envs
-#   Touches env files for every app's env_file: entry, including
-#   theengsgateway even though backup.bats/restore.bats only ever start/stop
-#   zigbee2mqtt/zwave-js-ui -- compose resolves ALL services' env_file:
-#   references from the `include:`d project up front, for any subcommand
-#   (even one scoped to a single service), so a missing theengsgateway.env
-#   fails backup/profiles.yaml's compose stop/start quiesce hooks too.
+#   Touches env files for every app's env_file: entry. compose resolves ALL
+#   included services' env_file: references from the `include:`d project up
+#   front, for any subcommand (even one scoped to a single service), so a
+#   missing <app>.env fails backup/profiles.yaml's compose stop/start quiesce
+#   hooks too. theengsgateway is currently commented out of compose.yaml's
+#   include: (see compose.yaml / compose/hardware.yaml), so it's not part of
+#   the project and doesn't need a stubbed env file below; re-add its line
+#   here if it's ever re-enabled there.
 #   Normally bin/apply renders all of these from bws before compose ever
 #   reads them; tests that bring containers up directly bypass bin/apply
 #   entirely, so without this `docker compose` fails with "env file ... not
@@ -82,7 +84,7 @@ hl_test_make_datadirs() {
 hl_test_stub_app_envs() {
   : >"${HL_ENV_DIR}/zigbee2mqtt.env"
   echo "SESSION_SECRET=test-session-secret-value" >"${HL_ENV_DIR}/zwave-js-ui.env"
-  : >"${HL_ENV_DIR}/theengsgateway.env"
+  # : >"${HL_ENV_DIR}/theengsgateway.env"
 }
 
 # hl_test_running_services

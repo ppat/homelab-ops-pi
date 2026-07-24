@@ -24,10 +24,10 @@ services:
     devices:
     - /dev/serial/by-id/usb-Zooz_800_Z-Wave_Stick_533D004242-if00:/dev/zwave
 
-  theengsgateway:
-    # BLE scanning requires host BlueZ over D-Bus; host networking + privileged
-    # is the documented TheengsGateway pattern for hardware BT access.
-    network_mode: host
-    privileged: true
-    volumes:
-    - /var/run/dbus:/var/run/dbus
+  # theengsgateway:
+  #   # BLE scanning requires host BlueZ over D-Bus; host networking + privileged
+  #   # is the documented TheengsGateway pattern for hardware BT access.
+  #   network_mode: host
+  #   privileged: true
+  #   volumes:
+  #   - /var/run/dbus:/var/run/dbus
