@@ -9,7 +9,7 @@ jq = "1.8.2"
 "github:facebook/zstd" = "1.5.7"
 
 # --- test-only ---
-bats = "1.13.0"
+bats = "1.14.0"
 
 [settings]
 idiomatic_version_file_enable_tools = []
